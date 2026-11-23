@@ -4,13 +4,13 @@ LE_HOME=_os.environ.get('LE_HOME',_os.path.dirname(_os.path.dirname(_os.path.abs
 import json,base64,io,os,sys,concurrent.futures as cf,urllib.request,time
 from PIL import Image
 S=LE_HOME+'/'
-OUT=S+'mshots/_judge_gem.json'
+OUT=S+'mshots/_judge.json'
 MET=json.load(open(S+'mshots/_metrics.json'))
 import hashlib
 NICHE={hashlib.md5(l['id'].encode()).hexdigest()[:12]:(l['niche'],l['n']) for l in json.load(open(S+'leads/leads.json'))}
 NICHE.update({hashlib.md5(l['id'].encode()).hexdigest()[:12]:(l['business_type'],l['name']) for l in json.load(open(S+'leads/grok_rows.json'))})
 J=json.load(open(OUT)) if os.path.exists(OUT) else {}
-J={k:v for k,v in J.items() if 'verdict' in v}
+DONE={k for k,v in J.items() if 'verdict' in v and str(v.get('by','')).startswith('gemini')}
 PROMPT="""You are screening local small-business websites for a web designer who rebuilds outdated sites. Most customers will see these sites on a phone, so judge the MOBILE experience first.
 This is NAME, a BUSINESS. The image is the top two screens of its homepage on an iPhone. Judge it the way an experienced designer would in 2-3 seconds, weighing: overall design and how current it looks; UI (readability, spacing, hierarchy, tap-friendly buttons, a clear mobile menu); features (an obvious way to call, book, order or get a quote near the top); and function (does it fit the phone, or is it a shrunk desktop page, cut off, overlapping or broken).
 Automated hints (can be wrong; trust what you see in the image): MEASURED
@@ -35,6 +35,7 @@ def lane():
     while True:
         with LOCK:
             now=time.time()
+            if all(L['next']==float('inf') for L in LANES):return None
             for L in LANES:
                 if L['next']<=now:L['next']=now+GAP;return L
             wait=min(L['next'] for L in LANES)-now
@@ -49,14 +50,16 @@ def judge(h):
     body=json.dumps({"contents":[{"parts":[{"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(b.getvalue()).decode()}},{"text":prompt}]}],"generationConfig":{"temperature":0,"responseMimeType":"application/json"}}).encode()
     for att in range(12):
         L=lane()
+        if L is None:return h,{"error":"daily quota used up"}
         try:
             r=urllib.request.urlopen(urllib.request.Request(GURL.format(m=L['m']),data=body,headers={"x-goog-api-key":L['k'],"Content-Type":"application/json"}),timeout=90)
             t=json.load(r)['candidates'][0]['content']['parts'][0]['text']
             t=t[t.index('{'):t.rindex('}')+1];v=json.loads(t);v['by']=L['m'];return h,v
         except urllib.error.HTTPError as e:
             if e.code in(429,503):
-                d=_re.search(r'"retryDelay": "(\d+)s"',e.read().decode('utf-8','replace'))
-                with LOCK:L['next']=time.time()+max(10,int(d.group(1)) if d else 10)
+                txt=e.read().decode('utf-8','replace');d=_re.search(r'"retryDelay": "(\d+)s"',txt)
+                # A per-day quota hit retires that lane until tomorrow; per-minute hits wait the suggested delay.
+                with LOCK:L['next']=float('inf') if 'PerDay' in txt else time.time()+max(10,int(d.group(1)) if d else 10)
                 continue
             time.sleep(2)
         except Exception:time.sleep(2)
@@ -66,11 +69,12 @@ MET=json.load(open(S+'mshots/_metrics.json'))
 import hashlib
 NICHE={hashlib.md5(l['id'].encode()).hexdigest()[:12]:(l['niche'],l['n']) for l in json.load(open(S+'leads/leads.json'))}
 NICHE.update({hashlib.md5(l['id'].encode()).hexdigest()[:12]:(l['business_type'],l['name']) for l in json.load(open(S+'leads/grok_rows.json'))})
-todo=[f[:-4] for f in os.listdir(S+'mshots') if f.endswith('.jpg') and f[:-4] not in J and f[:-4] in MET and 'fail' not in MET[f[:-4]]]
+todo=[f[:-4] for f in os.listdir(S+'mshots') if f.endswith('.jpg') and f[:-4] not in DONE and f[:-4] in MET and 'fail' not in MET[f[:-4]]]
 print('judging',len(todo),flush=True)
 n=0
 with cf.ThreadPoolExecutor(int(os.environ.get('CONC','8'))) as ex:
     for h,r in ex.map(judge,todo):
+        if r.get('error'):continue
         J[h]=r;n+=1
         if n%50==0:json.dump(J,open(OUT,'w'));print(n,flush=True)
 json.dump(J,open(OUT,'w'))

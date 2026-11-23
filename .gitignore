@@ -9,3 +9,4 @@ grok_in_bot*.csv
 site/
 __pycache__/
 *.log
+logs/
