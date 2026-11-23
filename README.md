@@ -25,7 +25,7 @@ python3 engine/sync.py push # upserts lead_engine_leads and uploads new files
 | Verify sites | `audit.py`, `paths.py` | load every website, find booking/ordering/shop providers |
 | Phone screenshots | `shot_m.py`, `reshoot_m.py`, `grok_shot.py` | iPhone-size capture of the first two screens plus phone metrics |
 | Vision judge | `judge_gem.py` | Gemini (`gemini-flash-lite-latest`, falls back to `gemini-flash-latest`) rates each screenshot redesign / maybe / skip. Never OpenAI. Never Gemini key 445. |
-| Score | `score2.py`, `profiles.py` | six layers out of 100 and tiers A/B/C |
+| Score | `score2.py` (uses `score.py` helpers), `profiles.py` | six layers out of 100 and tiers A/B/C |
 | Presence | `social1.py`, `social2.py`, `igparse.py`, `fbparse.py` | business Facebook/Instagram/TikTok pages only, never owners' personal profiles |
 | Still open | `activity.py`, `layer3.py` | Google review recency, closed flags, hours; adjusts tiers |
 | Bot sweep | `grok1.py`, `grok2.py`, `grok_merge_repeats.py`, `bot8_merge.py` | merge Grok research-bot CSVs (`grok_in/`), apply verifier fixes, dedupe, score |
