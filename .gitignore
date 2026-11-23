@@ -1,0 +1,11 @@
+.env
+.pushed
+leads/
+social/
+mshots/
+shots/
+grok_in/
+grok_in_bot*.csv
+site/
+__pycache__/
+*.log
